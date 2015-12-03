@@ -30,6 +30,7 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <stdio.h>
+#include "keys.h"
 
 // Enable or disable logging to diferent servres by comenting or uncomenting the next lines
 #define SPARKFUN_LOG
@@ -37,17 +38,17 @@
 
 #ifdef SPARKFUN_LOG
   char sparkfunDataServer[] = "data.sparkfun.com";
-  #define PUBLIC_KEY  "xRvJ0wRd5qCQVpD5LdV0" //Your SparkFun public_key
-  #define PRIVATE_KEY "ZazYexa4X6upk6weBKkZ" //Your SparkFun private_key
-  #define DELETE_KEY "LvrnRVvyOxuBk17pJ9kE"  //Your SparkFun delte_key
+  //#define PUBLIC_KEY  "yourpublickey" //Your SparkFun public_key
+  //#define PRIVATE_KEY "yourprivatekey" //Your SparkFun private_key
+  //#define DELETE_KEY "not used"  //Your SparkFun delte_key
   #define SPARKFUN_UPDATE_TIME 60000         //Update SparkFun data server every 60000 ms (1 minute).
   //#define SPARKFUN_UPDATE_TIME 300000         //Update SparkFun data server every 300000 ms (5 minutes).
 #endif
 
 #ifdef THINGSPEAK_LOG
   #include "ThingSpeak.h"
-  unsigned long myChannelNumber = 69081;
-  const char * myWriteAPIKey = "5K8570J2UUFVSBRY";
+  //unsigned long myChannelNumber = your channel number;
+  //const char * myWriteAPIKey = "your API key";
 #endif
 
 
