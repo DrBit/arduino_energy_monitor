@@ -30,7 +30,7 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <stdio.h>
-#include "keys.h"
+#include "keys.h"   //My file containing all my keys (not included)
 
 // Enable or disable logging to diferent servres by comenting or uncomenting the next lines
 #define SPARKFUN_LOG
@@ -38,9 +38,9 @@
 
 #ifdef SPARKFUN_LOG
   char sparkfunDataServer[] = "data.sparkfun.com";
-  //#define PUBLIC_KEY  "yourpublickey" //Your SparkFun public_key
-  //#define PRIVATE_KEY "yourprivatekey" //Your SparkFun private_key
-  //#define DELETE_KEY "not used"  //Your SparkFun delte_key
+  //#define PUBLIC_KEY  "yourpublickey"   //Your SparkFun public_key
+  //#define PRIVATE_KEY "yourprivatekey"  //Your SparkFun private_key
+  //#define DELETE_KEY "not used"         //Your SparkFun delte_key
   #define SPARKFUN_UPDATE_TIME 60000         //Update SparkFun data server every 60000 ms (1 minute).
   //#define SPARKFUN_UPDATE_TIME 300000         //Update SparkFun data server every 300000 ms (5 minutes).
 #endif
