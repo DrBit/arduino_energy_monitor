@@ -4,7 +4,7 @@
    
    Created:     Doctor Bit
    Date:        28 November 2015
-   Last update: 06 December 2015
+   Last update: 14 December 2015
    Home:        http://www.drbit.nl
    
    Tested with Arduino IDE 1.6.3
@@ -26,6 +26,14 @@
       1000 imp = 1Kwh
 
     Sensors should be attached at Arduino Uno pins 2 and 3 (Check other Interrupt pins for other arduino boards)
+    If we are sensing more than 3 sensors (and up to 6) we can use Arduino Mega. 
+    External Interrupts on Arduino Mega: 
+    2 (interrupt 0)
+    3 (interrupt 1)
+    18 (interrupt 5)
+    19 (interrupt 4)
+    20 (interrupt 3) 
+    21 (interrupt 2)
  */
 
 #include <SPI.h>
@@ -73,49 +81,70 @@ unsigned long main_timer = 0;
 int failedResponse = 0;
 String power;
 
-// VARS ///////////////
-const int chan1_pin = 2;
-const int chan2_pin = 3;
-const float w_per_pulse = 1;
+// VARS GENERAL ///////////////////
 const unsigned long ms_per_hour = 3600000UL;
 
-volatile unsigned int chan1_count = 0;
-volatile unsigned int chan2_count = 0;
-unsigned long report_time = 0;
-volatile unsigned long chan1_first_pulse = 0;
-volatile unsigned long chan1_last_pulse = 0;
-volatile unsigned long chan2_first_pulse = 0;
-volatile unsigned long chan2_last_pulse = 0;
+// VARS ELECTRICITY ///////////////
+const int elec_chan1_pin = 2;
+const int elec_chan2_pin = 3;
+const float elec_w_per_pulse_ch1 = 1;   // Wats per pulse on ch1
+const float elec_w_per_pulse_ch2 = 1;   // Wats per pulse on ch2
 
-static unsigned int chan1_watts;
-unsigned long chan1_delta; // Time since last pulse
-static unsigned int chan2_watts;
-unsigned long chan2_delta; // Time since last pulse
+volatile unsigned int elec_chan1_count = 0;
+volatile unsigned int elec_chan2_count = 0;
+volatile unsigned long elec_chan1_first_pulse = 0;
+volatile unsigned long elec_chan1_last_pulse = 0;
+volatile unsigned long elec_chan2_first_pulse = 0;
+volatile unsigned long elec_chan2_last_pulse = 0;
 
-//----------------------------------------------------------------------
-void chan1_isr() {    // chan1_pulse
+static unsigned int elec_chan1_watts;
+unsigned long elec_chan1_delta; // Time since last pulse
+static unsigned int elec_chan2_watts;
+unsigned long elec_chan2_delta; // Time since last pulse
+
+// Electricity interrupts ----------------------------------------------------------------------
+void elec_chan1_isr() {    // chan1_pulse
+  elec_chan1_count++;
+  elec_chan1_last_pulse = millis();
+  if (elec_chan1_count == 1) { // was reset
+    elec_chan1_first_pulse = elec_chan1_last_pulse;
+  }
+}
+
+void elec_chan2_isr() {    // chan2_pulse
+  elec_chan2_count++;
+  elec_chan2_last_pulse = millis();
+  if (elec_chan2_count == 1) { // was reset
+    elec_chan2_first_pulse = elec_chan2_last_pulse;
+  }
+}
+
+// VARS GAS ///////////////
+
+
+// Gas interrupts ----------------------------------------------------------------------
+
+void gas_chan1_isr() {    // chan1_pulse
   chan1_count++;
   chan1_last_pulse = millis();
   if (chan1_count == 1) { // was reset
-    chan1_first_pulse = chan1_last_pulse;
+    elec_chan1_first_pulse = chan1_last_pulse;
   }
 }
 
-void chan2_isr() {    // chan2_pulse
-  chan2_count++;
-  chan2_last_pulse = millis();
-  if (chan2_count == 1) { // was reset
-    chan2_first_pulse = chan2_last_pulse;
-  }
-}
+
 
 //----------------------------------------------------------------------
 void setup()
 {
-  pinMode(chan1_pin, INPUT);
-  pinMode(chan2_pin, INPUT);
-  attachInterrupt(0, chan1_isr, RISING);
-  attachInterrupt(1, chan2_isr, RISING);
+  pinMode(elec_chan1_pin, INPUT);
+  pinMode(elec_chan2_pin, INPUT);
+
+  // Setting up interrupts
+  attachInterrupt(0, elec_chan1_isr, RISING); // Interrupt 0 
+  //attachInterrupt(1, elec_chan2_isr, RISING);
+  attachInterrupt(1, gas_chan1_isr, RISING);
+  //attachInterrupt(18, chan2_isr, RISING);   // Only for arduino Mega
 
   Serial.begin(9600);   //Initiallize the serial port.
 
@@ -176,7 +205,7 @@ void sendToSparkfunDataServer()
             client.print("?private_key=");
             client.print(PRIVATE_KEY);
             client.print("&power=");
-            client.println(chan1_watts);    //send the number stored in 'humidity' string. Select only one.
+            client.println(elec_chan1_watts);    //send the number stored in 'humidity' string. Select only one.
          
             delay(1000); //Give some time to Sparkfun server to send the response to ENC28J60 ethernet module.
             sparkfun_timer = millis();
@@ -203,8 +232,8 @@ void sendToSparkfunDataServer()
 void sendToThingspeakServer()
 {
   Serial.println("Sending data to Thingspeak...");
-  int data_filed1 = chan1_watts;
-  int data_filed2 = chan2_watts;
+  int data_filed1 = elec_chan1_watts;
+  int data_filed2 = elec_chan2_watts;
   ThingSpeak.writeField(myChannelNumber, 1, data_filed1, myWriteAPIKey);
   ThingSpeak.writeField(myChannelNumber, 2, data_filed2, myWriteAPIKey);
   // ThingSpeak will only accept updates every 15 seconds.
@@ -214,31 +243,30 @@ void sendToThingspeakServer()
 //----------------------------------------------------------------------
 void power_calculations() {
   Serial.println("Calculating power consuption: ");
-  // If 60 seconds have passed restart counter
+  // If 60 seconds have passed restart counter  // is this needded???
+  /*
   if (millis() - chan1_last_pulse > 60000) {
-    chan1_watts = 0;
+    elec_chan1_watts = 0;
   }
-  if (millis() - chan2_last_pulse > 60000) {
-    chan2_watts = 0;
-  }
+  if (millis() - elec_chan2_last_pulse > 60000) {
+    elec_chan2_watts = 0;
+  }*/
 
-  if (millis() - report_time > 5000) {
-    chan1_delta = chan1_last_pulse - chan1_first_pulse;
-    if (chan1_delta && chan1_count) {
-      chan1_watts = (chan1_count - 1) * w_per_pulse * ms_per_hour / chan1_delta;
-      chan1_count = 0;
-    }
-    chan2_delta = chan2_last_pulse - chan2_first_pulse;
-    if (chan2_delta && chan2_count) {
-      chan2_watts = (chan2_count - 1) * w_per_pulse * ms_per_hour / chan2_delta;
-      chan2_count = 0;
-    }
-    if (!(report_time == 0 && chan1_watts == 0 && chan2_watts == 0)) {
-      Serial.print("Chan1 ");
-      Serial.println(chan1_watts);
-      Serial.print("Chan2 \n");
-      Serial.println(chan2_watts);
-      report_time = millis();
-    }
+  elec_chan1_delta = elec_chan1_last_pulse - elec_chan1_first_pulse;
+  if (elec_chan1_delta && elec_chan1_count) {
+    elec_chan1_watts = (elec_chan1_count - 1) * elec_w_per_pulse_ch1 * ms_per_hour / elec_chan1_delta;
+    elec_chan1_count = 0;
+  }
+  elec_chan2_delta = elec_chan2_last_pulse - elec_chan2_first_pulse;
+  if (elec_chan2_delta && elec_chan2_count) {
+    elec_chan2_watts = (elec_chan2_count - 1) * elec_w_per_pulse_ch2 * ms_per_hour / elec_chan2_delta;
+    elec_chan2_count = 0;
+  }
+  if (!(elec_report_time == 0 && elec_chan1_watts == 0 && elec_chan2_watts == 0)) {
+    Serial.print("Chan1 ");
+    Serial.println(elec_chan1_watts);
+    Serial.print("Chan2 \n");
+    Serial.println(elec_chan2_watts);
+    elec_report_time = millis();
   }
 }
