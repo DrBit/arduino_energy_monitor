@@ -262,11 +262,9 @@ void power_calculations() {
     elec_chan2_watts = (elec_chan2_count - 1) * elec_w_per_pulse_ch2 * ms_per_hour / elec_chan2_delta;
     elec_chan2_count = 0;
   }
-  if (!(elec_report_time == 0 && elec_chan1_watts == 0 && elec_chan2_watts == 0)) {
-    Serial.print("Chan1 ");
-    Serial.println(elec_chan1_watts);
-    Serial.print("Chan2 \n");
-    Serial.println(elec_chan2_watts);
-    elec_report_time = millis();
-  }
+
+  Serial.print("Chan1 ");
+  Serial.println(elec_chan1_watts);
+  Serial.print("Chan2 \n");
+  Serial.println(elec_chan2_watts);
 }
