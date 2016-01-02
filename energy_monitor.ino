@@ -86,19 +86,11 @@ const unsigned long ms_per_hour = 3600000UL;
 
 // VARS ELECTRICITY ///////////////
 const float elec_w_per_pulse_ch1 = 1;   // Wats per pulse on ch1
-const float elec_w_per_pulse_ch2 = 1;   // Wats per pulse on ch2
-
 volatile unsigned int elec_chan1_count = 0;
-volatile unsigned int elec_chan2_count = 0;
 volatile unsigned long elec_chan1_first_pulse = 0;
 volatile unsigned long elec_chan1_last_pulse = 0;
-volatile unsigned long elec_chan2_first_pulse = 0;
-volatile unsigned long elec_chan2_last_pulse = 0;
-
 static unsigned int elec_chan1_watts;
 unsigned long elec_chan1_delta; // Time since last pulse
-static unsigned int elec_chan2_watts;
-unsigned long elec_chan2_delta; // Time since last pulse
 
 // Electricity interrupts ----------------------------------------------------------------------
 void elec_chan1_isr() {    // chan1_pulse
@@ -109,32 +101,30 @@ void elec_chan1_isr() {    // chan1_pulse
   }
 }
 
-void elec_chan2_isr() {    // chan2_pulse
-  elec_chan2_count++;
-  elec_chan2_last_pulse = millis();
-  if (elec_chan2_count == 1) { // was reset
-    elec_chan2_first_pulse = elec_chan2_last_pulse;
-  }
-}
-
 // VARS GAS ///////////////
 const float gas_mm3_per_pulse_ch1 = 1;   // Cubic Meters per pulse on ch1
-const float gas_mm3_per_pulse_ch2 = 1;   // Cubic Meters per pulse on ch2
 volatile unsigned int gas_chan1_count = 0;
-volatile unsigned int gas_chan2_count = 0;
 static unsigned int gas_chan1_mm3;
-static unsigned int gas_chan2_mm3;
 
 // Gas interrupts ----------------------------------------------------------------------
 void gas_chan1_isr() {    // chan1_pulse
   gas_chan1_count++;
 }
 
+// VARS WATER ///////////////
+const float wat_mm3_per_pulse_ch1 = 1;   // Cubic Meters per pulse on ch1
+volatile unsigned int wat_chan1_count = 0;
+static unsigned int wat_chan1_mm3;
+
+// WATER interrupts ----------------------------------------------------------------------
+void wat_chan1_isr() {    // chan1_pulse
+  wat_chan1_count++;
+}
+
 // PIN INTERRUPTS
 const int elec_chan1_pin = 2;
 const int gas_chan1_pin = 3;
-//const int elec_chan2_pin = 3;
-//const int gas_chan2_pin = 3;
+const int wat_chan1_pin = 21; // MEGA ONLY
 
 //----------------------------------------------------------------------
 void setup()
@@ -142,24 +132,23 @@ void setup()
   // Setting up interrupts  //////////////////
   pinMode(elec_chan1_pin, INPUT);
   pinMode(gas_chan1_pin, INPUT);
+  pinMode(wat_chan1_pin, INPUT);
   attachInterrupt(0, elec_chan1_isr, RISING); // Interrupt 0 
-  attachInterrupt(1, gas_chan1_isr, RISING);
-  //pinMode(elec_chan2_pin, INPUT);
-  //pinMode(egas_chan2_pin, INPUT);
-  //attachInterrupt(1, elec_chan2_isr, RISING);
-  //attachInterrupt(18, gas_chan2_isr, RISING);   // Only for arduino Mega
+  attachInterrupt(1, gas_chan1_isr, RISING);  // Interrupt 1
+  attachInterrupt(2, gas_chan1_isr, RISING);  // Interrupt 2 (MEGA ONLY)
   ///////////////////////////////////////////////
 
   Serial.begin(9600);   //Initiallize the serial port.
 
   #ifdef SPARKFUN_LOG
-    Serial.println("-= Logging to SparkFun enabled =-\n");
+    Serial.println("SparkFun enabled");
   #endif
   #ifdef THINGSPEAK_LOG
     ThingSpeak.begin(client);
-    Serial.println("-= Logging to ThingSpeak enabled =-\n");
+    Serial.println("ThingSpeak enabled\n");
   #endif
 
+  Serial.println("Network configuration:\n");
   if (Ethernet.begin(mac) == 0)  // start the Ethernet connection
   {
     Serial.println("Failed to configure Ethernet using DHCP");
@@ -184,6 +173,7 @@ void loop()
       main_timer = millis();  // Update main_timer with the current time in miliseconds.
       power_calculations();   // Calculate power consumption
       gas_calculations();     // Calculate gas consumption
+      water_calculations();   // Calculate water consumption
       
       #ifdef SPARKFUN_LOG 
       sendToSparkfunDataServer(); // Send data to sparkfun data server.
@@ -213,6 +203,8 @@ void sendToSparkfunDataServer()
             client.print(elec_chan1_watts);    
             client.print("&gas=");
             client.println(gas_chan1_mm3);
+            client.print("&water=");
+            client.println(wat_chan1_mm3);
          
             delay(1000); //Give some time to Sparkfun server to send the response to ENC28J60 ethernet module.
             sparkfun_timer = millis();
@@ -242,14 +234,9 @@ void sendToThingspeakServer()
 
   // Write to ThingSpeak. There are up to 8 fields in a channel, and we're writing to all of them.  
   // First, you set each of the fields you want to send
-  ThingSpeak.setField(1,elec_chan1_watts);
-  ThingSpeak.setField(2,gas_chan1_mm3);
-  //ThingSpeak.setField(3,pin2Voltage);
-  //ThingSpeak.setField(4,pin3Voltage);
-  //ThingSpeak.setField(5,pin4Voltage);
-  //ThingSpeak.setField(6,pin5Voltage);
-  //ThingSpeak.setField(7,pin6Voltage);
-  //ThingSpeak.setField(8,pin7Voltage);
+  ThingSpeak.setField(1,(int)elec_chan1_watts);
+  ThingSpeak.setField(2,(int)gas_chan1_mm3);
+  ThingSpeak.setField(3,(int)wat_chan1_mm3);
 
   // Then you write the fields that you've set all at once.
   ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
@@ -260,32 +247,13 @@ void sendToThingspeakServer()
 //----------------------------------------------------------------------
 void power_calculations() {
   Serial.println("Calculating power consuption: ");
-  // If 60 seconds have passed restart counter  // is this needded???
-  /*
-  if (millis() - chan1_last_pulse > 60000) {
-    elec_chan1_watts = 0;
-  }
-  if (millis() - elec_chan2_last_pulse > 60000) {
-    elec_chan2_watts = 0;
-  }*/
 
-  elec_chan1_delta = elec_chan1_last_pulse - elec_chan1_first_pulse;
-  //if (elec_chan1_delta && elec_chan1_count) {
-    elec_chan1_watts = (elec_chan1_count - 1) * elec_w_per_pulse_ch1 * ms_per_hour / elec_chan1_delta;
-    elec_chan1_count = 0;
-  //}
-  elec_chan2_delta = elec_chan2_last_pulse - elec_chan2_first_pulse;
-  //if (elec_chan2_delta && elec_chan2_count) {
-    elec_chan2_watts = (elec_chan2_count - 1) * elec_w_per_pulse_ch2 * ms_per_hour / elec_chan2_delta;
-    elec_chan2_count = 0;
-  //}
-
-  Serial.print("Chan1 ");
+  elec_chan1_delta = elec_chan1_last_pulse - elec_chan1_first_pulse;  // calculate time that has passed
+  elec_chan1_watts = (elec_chan1_count - 1) * elec_w_per_pulse_ch1 * ms_per_hour / elec_chan1_delta; //calculate wh
+  elec_chan1_count = 0; // reset pulse counter
+  Serial.print("Chan1 ");  // print data
   Serial.print(elec_chan1_watts);
   Serial.println(" Wh");
-  //Serial.print("Chan2 ");
-  //Serial.println(elec_chan2_watts);
-  //Serial.println(" Wh\n");
 }
 
 //----------------------------------------------------------------------
@@ -294,13 +262,20 @@ void gas_calculations() {
 
   gas_chan1_mm3 = gas_chan1_count * gas_mm3_per_pulse_ch1;
   gas_chan1_count = 0;
-  //gas_chan2_mm3 = gas_chan2_count * gas_mm3_per_pulse_ch2;
-  //gas_chan2_count = 0;
 
   Serial.print("Chan1 ");
   Serial.print(gas_chan1_mm3);
   Serial.println(" mm3\n");
-  //Serial.print("Chan2 \n");
-  //Serial.println(gas_chan2_mm3);
-  //Serial.print(" mm3\n");
+}
+
+//----------------------------------------------------------------------
+void water_calculations() {
+  Serial.println("Calculating water consuption: ");
+
+  wat_chan1_mm3 = wat_chan1_count * wat_mm3_per_pulse_ch1;
+  wat_chan1_count = 0;
+
+  Serial.print("Chan1 ");
+  Serial.print(wat_chan1_mm3);
+  Serial.println(" mm3\n");
 }
